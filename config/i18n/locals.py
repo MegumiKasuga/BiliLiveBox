@@ -26,7 +26,7 @@ class LocaleI18nFile:
 class I18nManager:
 
     def __init__(self, locals_dir: str, default_lang: str = "en_us"):
-        self.lang = locale.getdefaultlocale()[0]
+        self.lang = locale.getdefaultlocale()[0].lower()
         if not self.lang:
             self.lang = default_lang
         self.default_lang = default_lang
