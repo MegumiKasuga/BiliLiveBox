@@ -1,2 +1,7 @@
 {
+  "login_succeed": "Login Successful",
+  "scan_the_qrcode": "Please scan the QR code with the Bilibili Mobile App to login",
+  "qrcode_scanned_please_confirm": "QR code scanned, please confirm login on your mobile device",
+  "session_loaded_successfully": "Found valid local session data, logged in automatically",
+  "login_failed": "Login Failed"
 }

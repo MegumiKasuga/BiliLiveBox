@@ -1,8 +1,6 @@
-import time
-
-import requests, PIL, qrcode, os
-
+import time, requests, PIL, qrcode, os
 from bili.session import Session
+from bili import constants
 
 qr_code_codes = {
     0    : "Login successful",                              # 成功登录
@@ -17,11 +15,7 @@ def gen_qrcode() -> tuple[str, str]:
         :return: 二维码的URL和二维码的key(URL用于生成具体的二维码图片，key用于轮询二维码状态)
     """
     url = "https://passport.bilibili.com/x/passport-login/web/qrcode/generate"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        "Referer": "https://www.bilibili.com/",
-    }
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=constants.headers)
     data = response.json()
     if data['code'] == 0:
         qr_code_url = data['data']['url']
@@ -41,26 +35,32 @@ def check_qrcode_status(qrcode_key: str) -> dict:
         num(状态码，参看顶上的字典),
         status(状态码对应的状态),
         cookies(登录成功后的Cookies，失败则为None)
+        refresh_token(登录成功后，刷新cookies用的令牌，失败则为0)
     """
     url = "https://passport.bilibili.com/x/passport-login/web/qrcode/poll"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-        "Referer": "https://www.bilibili.com/",
-    }
     params = {
         "qrcode_key": qrcode_key
     }
-    response = requests.get(url, headers=headers, params=params)
+    response = requests.get(url, headers=constants.headers, params=params)
     data = response.json()
     code = data['code']
     msg = data['message']
     num = int(data['data']['code'])
+    refresh_token = 0
     cookies = None
 
     if code == 0 and num == 0:
         cookies = response.cookies.get_dict()
+        refresh_token = response.json()['data'].get('refresh_token', 0)
 
-    return {"code": code, "message": msg, "num": num, "status": qr_code_codes.get(num, "Unknown status"), "cookies": cookies}
+    return {
+        "code": code,
+        "message": msg,
+        "num": num,
+        "status": qr_code_codes.get(num, "Unknown status"),
+        "cookies": cookies,
+        "refresh_token": refresh_token
+    }
 
 
 def gen_qrcode_image(url: str) -> bytes:
@@ -112,7 +112,8 @@ def login_by_qrcode(sleep_time: float, timeout: float,
                     not_scanned_func,
                     not_confirmed_func,
                     force_break_loop_func,
-                    should_regen_qrcode_func) -> Session | None:
+                    should_regen_qrcode_func,
+                    login_failed_func) -> Session | None:
     """
     通过二维码登录的主函数
 
@@ -124,34 +125,45 @@ def login_by_qrcode(sleep_time: float, timeout: float,
     :param not_confirmed_func:          二维码已扫描但未确认时执行操作的函数，传入参数为登录状态字典
     :param force_break_loop_func:       用于强制中断轮询的函数，传入参数为登录状态字典，返回True表示中断
     :param should_regen_qrcode_func:    用于判断是否需要重新生成二维码的函数，传入参数为登录状态字典，返回True表示需要重新生成
+    :param login_failed_func:           当出现异常或超时导致失败时执行的函数，传入参数为异常对象(如因为超时或强制中断导致失败时则为None)
     :return:                            登录成功后的Session对象，登录失败或中断(超时)则返回None
     """
-    if sleep_time <= 0:
-        sleep_time = 1.0
-    waited_time = 0.0
-    qr_code_url, qrcode_key = gen_qrcode()
-    qrcode_display_func(gen_qrcode_image(qr_code_url))
+    try:
+        if sleep_time <= 0:
+            sleep_time = 1.0
+        waited_time = 0.0
+        qr_code_url, qrcode_key = gen_qrcode()
+        qrcode_display_func(gen_qrcode_image(qr_code_url))
 
-    while True:
-        code_statue = check_qrcode_status(qrcode_key)
-        if force_break_loop_func(code_statue) or (0 < timeout <= waited_time):
-            return None
-        if code_statue['code'] == 0 and code_statue['num'] == 0:
-            login_successful_func(code_statue)
-            return Session(login_time=time.gmtime(), cookies=code_statue['cookies'])
-        elif code_statue['num'] == 86038:
-            if should_regen_qrcode_func(code_statue):
-                qr_code_url, qrcode_key = gen_qrcode()
-                qrcode_display_func(gen_qrcode_image(qr_code_url))
-                waited_time += sleep_time
-                time.sleep(sleep_time)
-                continue
-        elif code_statue['num'] == 86101:
-            not_scanned_func(code_statue)
-        elif code_statue['num'] == 86090:
-            not_confirmed_func(code_statue)
-        time.sleep(sleep_time)
-        waited_time += sleep_time
+        while True:
+            code_statue = check_qrcode_status(qrcode_key)
+            if force_break_loop_func(code_statue) or (0 < timeout <= waited_time):
+                login_failed_func(None)
+                return None
+            if code_statue['code'] == 0 and code_statue['num'] == 0:
+                login_successful_func(code_statue)
+                return Session(
+                    login_time=time.gmtime(),
+                    cookies=code_statue['cookies'],
+                    refresh_token=code_statue['refresh_token']
+                )
+            elif code_statue['num'] == 86038:
+                if should_regen_qrcode_func(code_statue):
+                    qr_code_url, qrcode_key = gen_qrcode()
+                    qrcode_display_func(gen_qrcode_image(qr_code_url))
+                    waited_time += sleep_time
+                    time.sleep(sleep_time)
+                    continue
+            elif code_statue['num'] == 86101:
+                not_scanned_func(code_statue)
+            elif code_statue['num'] == 86090:
+                not_confirmed_func(code_statue)
+            time.sleep(sleep_time)
+            waited_time += sleep_time
+    except Exception as e:
+        login_failed_func(e)
+        return None
+
 
 
 def login_by_session_file(session_file_path: str) -> Session | None:
@@ -164,15 +176,10 @@ def login_by_session_file(session_file_path: str) -> Session | None:
     if os.path.exists(session_file_path):
         with open(session_file_path, 'r', encoding='utf-8') as f:
             session_data = json.load(f)
-            return Session(login_time=session_data['login_time'], cookies=session_data['cookies'])
+            return Session(
+                login_time=session_data['login_time'],
+                cookies=session_data['cookies'],
+                refresh_token=session_data['refresh_token']
+            )
     else:
         return None
-
-
-login_by_qrcode(sleep_time=5, timeout=600,
-                qrcode_display_func=lambda img_bytes: show_qrcode_image(img_bytes),
-                login_successful_func=lambda status: print("Login successful!"),
-                not_scanned_func=lambda status: print("Please scan the QR code."),
-                not_confirmed_func=lambda status: print("Please confirm the login on your device."),
-                force_break_loop_func=lambda status: False,
-                should_regen_qrcode_func=lambda status: True)

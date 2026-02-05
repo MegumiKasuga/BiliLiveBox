@@ -39,8 +39,16 @@ class I18nManager:
                     langs = file[:-5]
                     self.locales[langs] = LocaleI18nFile(langs, self.locals_dir)
 
-    def translate(self, key: str) -> str:
+    def translate(self, key: str, **kwargs) -> str:
+        """
+        从本地化文件钟读取键对应的字符串的翻译，如果找不到对应语言的翻译，会去找默认语言的翻译，若仍然找不到，则返回传入的键名
+        :param key:      传入的本地化键名
+        :param kwargs:   用于格式化字符串的关键字参数(可以在翻译字符串中使用形如 {abc} 的形式引用)
+        :return:         翻译后的字符串
+        """
         locale_file = self.locales.get(self.lang, self.locales.get(self.default_lang))
+        result = key
         if locale_file and key in locale_file:
-            return locale_file[key]
-        return key
+            result = locale_file[key]
+        result = result.format(**kwargs)
+        return result
