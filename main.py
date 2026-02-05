@@ -12,7 +12,7 @@ if __name__ == '__main__':
 
     cfg.register_basic_config_item("ForceLogin", bool, False, "Whether to force login via QR code, ignoring saved session")
     cfg.load()
-    i18n = I18nManager(locals_dir="locals", default_lang="en_us")
+    i18n = I18nManager(locals_dir="lang", default_lang="en_us")
 
     session = None
     need_to_login = True

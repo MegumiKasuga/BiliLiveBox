@@ -3,7 +3,6 @@ from Crypto.PublicKey import RSA
 from Crypto.Hash import SHA256
 from Crypto.PublicKey.RSA import RsaKey
 import binascii
-import time
 
 pub_key: RsaKey = None
 
