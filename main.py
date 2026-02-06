@@ -1,8 +1,13 @@
 import os.path
 
+import requests
+
 from config.i18n.locals import I18nManager
 from config.config import Config
 from bili import login
+from bili import encrypter
+from bili import constants
+import urllib.parse
 
 session_saving_path = 'usr/session.json'
 
@@ -41,3 +46,19 @@ if __name__ == '__main__':
         session.save_session(session_saving_path)
     else:
         print(i18n.translate("session_loaded_successfully"))
+
+    # 8178490
+
+    # img_key, sub_key = encrypter.get_wbi_keys()
+    #
+    # signed_params = encrypter.enc_wbi(
+    #     params={'id': 8178490},
+    #     img_key=img_key,
+    #     sub_key=sub_key
+    # )
+    # # query = urllib.parse.urlencode(signed_params)
+    # # print(signed_params)
+    # # print(query)
+    # response = requests.get("https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo",
+    #                         headers=constants.headers, cookies=session.cookies, params=signed_params)
+    # print(response.text)
