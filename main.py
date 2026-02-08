@@ -54,15 +54,15 @@ if __name__ == '__main__':
     else:
         print(i18n.translate("session_loaded_successfully"))
 
-    liveHouse = live.get_stream_certify_key(22747736, sessions, wbi)
-    loop = asyncio.get_event_loop()
+    liveHouse = live.get_live_house(22499290, sessions, wbi)
+    loop = asyncio.new_event_loop()
+    eventLoop = live.LiveEventLoop(liveHouse, liveHouse.host_list[0], user, 5)
 
-    for i in liveHouse.host_list:
-        if loop.is_running():
-            task = asyncio.create_task(
-                i.verify(liveHouse.room_id, user.mid, liveHouse.token)
-            )
-        else:
-            loop.run_until_complete(
-                i.verify(liveHouse.room_id, user.mid, liveHouse.token)
-            )
+    if loop.is_running():
+        task = asyncio.create_task(
+            eventLoop.start()
+        )
+    else:
+        loop.run_until_complete(
+            eventLoop.start()
+        )
