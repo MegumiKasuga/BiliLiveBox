@@ -1,3 +1,4 @@
+import asyncio
 import os.path
 
 import requests
@@ -5,8 +6,10 @@ import requests
 from config.i18n.locals import I18nManager
 from config.config import Config
 from bili import login
+from bili import session
 from bili import encrypter
 from bili import constants
+from bili import live
 import urllib.parse
 
 session_saving_path = 'usr/session.json'
@@ -19,23 +22,26 @@ if __name__ == '__main__':
     cfg.load()
     i18n = I18nManager(locals_dir="lang", default_lang="en_us")
 
-    session = None
+    sessions = None
     need_to_login = True
+    user, wbi = None, None
 
     if (not bool(cfg.get_config_value('ForceLogin')) and
             os.path.exists(session_saving_path)):
-        session = login.login_by_session_file(session_saving_path)
-        need_to_refresh = session.cookie_need_to_refresh()
+        sessions = login.login_by_session_file(session_saving_path)
+        need_to_refresh = sessions.cookie_need_to_refresh()
         if need_to_refresh['logged_in']:
             if need_to_refresh['need_to_refresh']:
-                if session.refresh_cookies(need_to_refresh['timestamp']):
-                    session.save_session(session_saving_path)
+                if sessions.refresh_cookies(need_to_refresh['timestamp']):
+                    sessions.save_session(session_saving_path)
+                    user, wbi = sessions.get_user_data('usr/user.json', 'usr/wbi.json')
                     need_to_login = False
             else:
                 need_to_login = False
+                user, wbi = sessions.get_user_data('usr/user.json', 'usr/wbi.json')
 
     if need_to_login:
-        session = login.login_by_qrcode(sleep_time=5, timeout=600,
+        sessions = login.login_by_qrcode(sleep_time=5, timeout=600,
                                         qrcode_display_func=lambda img_bytes: login.show_qrcode_image(img_bytes),
                                         login_successful_func=lambda status: print(i18n.translate("login_succeed")),
                                         not_scanned_func=lambda status: print(i18n.translate("scan_the_qrcode")),
@@ -43,22 +49,20 @@ if __name__ == '__main__':
                                         force_break_loop_func=lambda status: False,
                                         should_regen_qrcode_func=lambda status: True,
                                         login_failed_func=lambda status: print(i18n.translate("login_failed")),)
-        session.save_session(session_saving_path)
+        sessions.save_session(session_saving_path)
+        user, wbi = sessions.get_user_data('usr/user.json', 'usr/wbi.json')
     else:
         print(i18n.translate("session_loaded_successfully"))
 
-    # 8178490
+    liveHouse = live.get_stream_certify_key(22747736, sessions, wbi)
+    loop = asyncio.get_event_loop()
 
-    # img_key, sub_key = encrypter.get_wbi_keys()
-    #
-    # signed_params = encrypter.enc_wbi(
-    #     params={'id': 8178490},
-    #     img_key=img_key,
-    #     sub_key=sub_key
-    # )
-    # # query = urllib.parse.urlencode(signed_params)
-    # # print(signed_params)
-    # # print(query)
-    # response = requests.get("https://api.live.bilibili.com/xlive/web-room/v1/index/getDanmuInfo",
-    #                         headers=constants.headers, cookies=session.cookies, params=signed_params)
-    # print(response.text)
+    for i in liveHouse.host_list:
+        if loop.is_running():
+            task = asyncio.create_task(
+                i.verify(liveHouse.room_id, user.mid, liveHouse.token)
+            )
+        else:
+            loop.run_until_complete(
+                i.verify(liveHouse.room_id, user.mid, liveHouse.token)
+            )

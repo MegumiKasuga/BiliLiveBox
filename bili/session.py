@@ -3,6 +3,45 @@ from bs4 import BeautifulSoup
 from bili import constants
 from bili import encrypter
 
+
+class User:
+
+    def __init__(self, saving_path: str, mid: int, name: str, avatar_url: str, level: int, pendant_url: str):
+        self.saving_path = saving_path
+        self.mid = mid
+        self.name = name
+        self.avatar_url = avatar_url
+        self.level = level
+        self.pendant_url = pendant_url
+
+
+    def save(self):
+        json_obj = {
+            'mid': self.mid,
+            'name': self.name,
+            'avatar_url': self.avatar_url,
+            'level': self.level,
+            'pendant_url': self.pendant_url
+        }
+        with open(self.saving_path, 'w', encoding='utf-8') as f:
+            json.dump(json_obj, f, ensure_ascii=False, indent=4)
+
+
+def load_user_from_file(filepath: str) -> User | None:
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            json_obj = json.load(f)
+            return User(filepath,
+                        json_obj['mid'],
+                        json_obj['name'],
+                        json_obj['avatar_url'],
+                        json_obj['level'],
+                        json_obj['pendant_url']
+            )
+    except:
+        return None
+
+
 class Session:
 
     def __init__(self, login_time: str, cookies: dict, refresh_token: str):
@@ -105,3 +144,48 @@ class Session:
             return True
         except:
             return False
+
+
+    def get_user_data(self, user_saving_path: str, wbi_saving_path: str) -> tuple[User, tuple[str, str]] | tuple[None, tuple[str, str]]:
+        """
+        获取用户数据
+        :return: 包含用户数据的User对象
+        """
+        url = "https://api.bilibili.com/x/web-interface/nav"
+        response = requests.get(url, headers=constants.headers, cookies=self.cookies)
+        json_obj = response.json()
+
+        data = json_obj['data']
+        img_url: str = json_obj['data']['wbi_img']['img_url']
+        sub_url: str = json_obj['data']['wbi_img']['sub_url']
+        img_key = img_url.rsplit('/', 1)[1].split('.')[0]
+        sub_key = sub_url.rsplit('/', 1)[1].split('.')[0]
+        wbi = (img_key, sub_key)
+        # save_wbi(wbi_saving_path, wbi)
+        if json_obj['code'] != 0:
+            return None, wbi
+        avatar_url: str = data['face']
+        mid: int = data['mid']
+        name: str = data['uname']
+        level: int = data['level_info']['current_level']
+        pendant_url: str = data['pendant']['image']
+        user = User(user_saving_path, mid, name, avatar_url, level, pendant_url)
+        # user.save()
+        return user, wbi
+
+
+def save_wbi(path: str, wbi: tuple[str, str]) -> None:
+    json_obj = {
+        'img_key': wbi[0],
+        'sub_key': wbi[1]
+    }
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(json_obj, f, ensure_ascii=False, indent=4)
+
+def load_wbi(path: str) -> tuple[str, str] | None:
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            json_obj = json.load(f)
+            return json_obj['img_key'], json_obj['sub_key']
+    except:
+        return None
